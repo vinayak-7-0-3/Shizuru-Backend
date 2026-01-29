@@ -12,7 +12,6 @@ from ..metadata.models import *
 class PyObjectId(ObjectId):
     """Pydantic-friendly wrapper around bson.ObjectId."""
 
-
     @classmethod
     def __get_pydantic_core_schema__(
         cls, _source_type: Any, _handler: GetCoreSchemaHandler
@@ -29,12 +28,18 @@ class PyObjectId(ObjectId):
             return ObjectId(v)
 
         # validate after converting from str
-        return core_schema.no_info_after_validator_function(
-            validate,
-            core_schema.union_schema([
-                core_schema.is_instance_schema(ObjectId),
-                core_schema.str_schema()
-            ])
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.str_schema(),
+            python_schema=core_schema.no_info_after_validator_function(
+                validate,
+                core_schema.union_schema([
+                    core_schema.is_instance_schema(ObjectId),
+                    core_schema.str_schema(),
+                ]),
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda x: str(x)
+            ),
         )
 
     @classmethod
@@ -56,7 +61,6 @@ class MongoBaseModel(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,         
         arbitrary_types_allowed=True,  
-        json_encoders={ObjectId: str},
     )
 
 
