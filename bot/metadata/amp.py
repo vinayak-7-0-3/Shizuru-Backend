@@ -146,7 +146,7 @@ class AppleMusic:
                 raise AppleMusicError(f"Login : Failed to fetch main page: {main_resp.status}")
             main_page_body = await main_resp.text()
 
-        js_file_match = re.search(r'/assets/index-legacy-[^/]+\.js', main_page_body)
+        js_file_match = re.search(r'/assets/index.*\.js', main_page_body)
         if not js_file_match:
             raise AppleMusicError("Login : Index JS file not found")
 
