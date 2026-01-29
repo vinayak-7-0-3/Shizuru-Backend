@@ -2,10 +2,17 @@ import asyncio
 from typing import Callable, Awaitable, Any
 
 class AsyncQueueProcessor:
-    def __init__(self, handler: Callable[[Any], Awaitable[None]]):
+    def __init__(self, handler: Callable[[Any], Awaitable[None]], rate_limit: float = 10.0):
+        """
+        Args:
+            handler: The async function to process each item
+            rate_limit: Maximum items per second (default 10)
+        """
         self.queue = asyncio.Queue()
-        self.handler = handler  # the core function
+        self.handler = handler
         self.processing_task = None
+        self.rate_limit = rate_limit
+        self.delay = 1.0 / rate_limit if rate_limit > 0 else 0
 
     def start(self):
         if not self.processing_task or self.processing_task.done():
@@ -21,6 +28,10 @@ class AsyncQueueProcessor:
             except Exception as e:
                 print(f"Error processing item: {e}")
             self.queue.task_done()
+            
+            # Rate limiting delay
+            if self.delay > 0:
+                await asyncio.sleep(self.delay)
 
     async def add_item(self, item: Any):
         await self.queue.put(item)

@@ -34,14 +34,15 @@ async def handle_tracks(data: Tuple[Client, Message]):
 
         await TrackManager.insert_track(metadata)
 
-        artist_exist = await ArtistManager.check_exists(
-            metadata.artist_id, metadata.artist
-        )
-        if not artist_exist:
-            artist_data = await meta_manager.get_artist(
+        if metadata.artist_id:
+            artist_exist = await ArtistManager.check_exists(
                 metadata.artist_id, metadata.artist
             )
-            await ArtistManager.insert_artist(artist_data)
+            if not artist_exist:
+                artist_data = await meta_manager.get_artist(
+                    metadata.artist_id, metadata.artist
+                )
+                await ArtistManager.insert_artist(artist_data)
         
         if metadata.album_id:
             album_exist = await AlbumManager.check_album_exists(metadata.album_id)
