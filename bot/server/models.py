@@ -1,4 +1,6 @@
+from typing import List
 from pydantic import BaseModel
+from ..database.models import DBAlbum, DBArtist, DBTrack
 
 
 class UserLogin(BaseModel):
@@ -23,3 +25,12 @@ class Token(BaseModel):
 
 class GenericResponse(BaseModel):
     message: str
+
+
+class AlbumWithTracks(DBAlbum):
+    tracks: List[DBTrack] = []
+
+
+class ArtistDetailed(DBArtist):
+    albums: List[DBAlbum] = []
+    tracks: List[DBTrack] = []
