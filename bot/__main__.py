@@ -1,12 +1,9 @@
-import signal
 import asyncio
 
 import uvicorn
-from uvicorn import Config as UvicornConfig, Server
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pyrogram import idle
 
 from config import Config
 from .tgclient import botmanager
@@ -26,42 +23,52 @@ web_server.add_middleware(
 )
 web_server.include_router(router)
 
-shutdown_event = asyncio.Event()
-
-def _signal_handler():
-    LOGGER.info("🔴 Shutdown signal received...")
-    shutdown_event.set()
-
 
 async def run_fastapi():
-    config = uvicorn.Config(app=web_server, host="0.0.0.0", port=8501, log_level="info", loop="asyncio")
+    config = uvicorn.Config(app=web_server, host="0.0.0.0", port=8501, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 
 
 async def main():
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _signal_handler)
+    try:
+        await botmanager.add_main_bot(Config.TG_BOT_TOKEN)
+        if Config.MULTI_CLIENTS:
+            for token in Config.MULTI_CLIENTS:
+                await botmanager.add_worker_bot(token)
+        
+        await botmanager.start_all()
+        
+        await mongo.connect()
+        await meta_manager.setup()
 
-    main_bot = await botmanager.add_main_bot(Config.TG_BOT_TOKEN)
-    if Config.MULTI_CLIENTS:
-        for token in Config.MULTI_CLIENTS:
-            await botmanager.add_worker_bot(token)
-    
-    await botmanager.start_all()
-    await mongo.connect()
-    await meta_manager.setup()
+        await run_fastapi()
 
-    await asyncio.gather(
-        run_fastapi(),
-        shutdown_event.wait()  # Wait for signal
-    )
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    except Exception as e:
+        LOGGER.error(f"Startup failed: {e}")
+        
+    finally:
+        LOGGER.info("Stopping services...")
+        try:
+            await meta_manager.stop()
+        except Exception:
+            pass
+            
+        try:
+            await mongo.disconnect()
+        except Exception:
+            pass
+            
+        try:
+            await botmanager.stop_all()
+        except Exception:
+            pass
 
-
-    await meta_manager.stop()
-    await mongo.disconnect()
-    await botmanager.stop_all()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
