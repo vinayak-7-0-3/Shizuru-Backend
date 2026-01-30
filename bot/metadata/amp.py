@@ -72,7 +72,12 @@ class AppleMusic:
         }
 
         resp = await self._get(endpoint, params)
-        track_id = resp['results']['songs'].get('data', [])[0].get('id')
+
+        try:
+            track_id = resp['results']['songs'].get('data', [])[0].get('id')
+        except KeyError:
+            raise AppleMusicError(f"Track not found : {term}")
+
         if track_id:
             track_data = await self.get_song(track_id)
             track_data = track_data['data'][0]
@@ -107,11 +112,15 @@ class AppleMusic:
 
         cover_url = self.get_artwork_url(album_data['attributes'].get('artwork'))
 
+        try:
+            artist_id = album_data['relationships']['artists']['data'][0]['id']
+        except:
+            artist_id = '0' # fallback for various artist 
         return BaseAlbum(
             title=album_data['attributes']['name'],
             album_id=album_id,
             artist=album_data['attributes']['artistName'],
-            artist_id=album_data['relationships']['artists']['data'][0]['id'],
+            artist_id=artist_id,
             provider='apple-music',
             upc=album_data['attributes'].get('upc'),
             tags=album_data['attributes']['genreNames'],
