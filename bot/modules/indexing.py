@@ -6,6 +6,7 @@ from pyrogram.enums import MessageMediaType
 from ..utils.queue import AsyncQueueProcessor
 from ..metadata.handler import meta_manager
 from ..database import AlbumManager, ArtistManager, TrackManager
+from config import Config
 
 async def handle_tracks(data: Tuple[Client, Message]):
     c, msg = data
@@ -56,4 +57,6 @@ processor = AsyncQueueProcessor(handle_tracks)
 
 @Client.on_message(filters.audio | filters.document)
 async def handle_music(c: Client, msg: Message):
+    if msg.chat.id not in Config.MUSIC_CHANNELS:
+        return
     await processor.add_item((c, msg))
