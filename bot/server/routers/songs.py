@@ -64,14 +64,19 @@ async def stream_song(track_id: str, request: Request):
     )
 
     headers = {
-        "Content-Range": f"bytes {start_byte}-{end_byte}/{file_size}",
         "Accept-Ranges": "bytes",
         "Content-Length": str(total_bytes)
     }
 
+    if range_header:
+        headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/{file_size}"
+        status_code = 206
+    else:
+        status_code = 200
+
     return StreamingResponse(
         stream_gen,
-        status_code=206,  # Partial Content
+        status_code=status_code,
         media_type=db_track.mime_type or "audio/mpeg",
         headers=headers
     )
