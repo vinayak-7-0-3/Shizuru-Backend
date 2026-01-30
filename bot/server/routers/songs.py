@@ -24,9 +24,9 @@ async def get_song(id: str):
     return DBTrack(**song)
 
 
-@router.get("/stream/{track_id}")
-async def stream_song(track_id: str, request: Request):
-    track = await mongo.db["songs"].find_one({"track_id": track_id})
+@router.get("/stream/{file_unique_id}")
+async def stream_song(file_unique_id: str, request: Request):
+    track = await mongo.db["songs"].find_one({"file_unique_id": file_unique_id})
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
