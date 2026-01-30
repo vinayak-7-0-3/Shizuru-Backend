@@ -23,6 +23,7 @@ async def handle_tracks(data: Tuple[Client, Message]):
         metadata.file_unique_id = audio_data.file_unique_id
         metadata.mime_type = audio_data.mime_type
         metadata.file_size = audio_data.file_size
+        metadata.file_name = audio_data.file_name
 
 
         song_exist = await TrackManager.check_exists(

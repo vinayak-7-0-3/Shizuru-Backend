@@ -7,6 +7,7 @@ class BaseTrack(BaseModel):
     msg_id: Optional[int] = None  #keeping it optional, but is necessary
     file_unique_id: Optional['str'] = None
     file_size: Optional[int] = None
+    file_name: Optional[str] = None
 
     title: str
     track_id: Optional[str] = None
