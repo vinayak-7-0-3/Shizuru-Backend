@@ -45,16 +45,16 @@ jobs:
 
           # Main branch tags
           if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "tags=${{ secrets.DOCKER_USERNAME }}/shizuru:latest,${{ secrets.DOCKER_USERNAME }}/shizuru:main,${{ secrets.DOCKER_USERNAME }}/shizuru:$COMMIT_HASH" >> $GITHUB_ENV
+            echo "tags=${{ secrets.DOCKER_USERNAME }}/shizuru-backend:latest,${{ secrets.DOCKER_USERNAME }}/shizuru-backend:main,${{ secrets.DOCKER_USERNAME }}/shizuru-backend:$COMMIT_HASH" >> $GITHUB_ENV
 
           # Beta branch tags
           elif [ "${{ github.ref_name }}" = "beta" ]; then
-            echo "tags=${{ secrets.DOCKER_USERNAME }}/shizuru:beta,${{ secrets.DOCKER_USERNAME }}/shizuru:$COMMIT_HASH" >> $GITHUB_ENV
+            echo "tags=${{ secrets.DOCKER_USERNAME }}/shizuru-backend:beta,${{ secrets.DOCKER_USERNAME }}/shizuru-backend:$COMMIT_HASH" >> $GITHUB_ENV
 
           # Other branch tags
           else
             SAFE_TAG=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr -cd '[:alnum:]._-')
-            echo "tags=${{ secrets.DOCKER_USERNAME }}/shizuru:$SAFE_TAG,${{ secrets.DOCKER_USERNAME }}/shizuru:$COMMIT_HASH" >> $GITHUB_ENV
+            echo "tags=${{ secrets.DOCKER_USERNAME }}/shizuru-backend:$SAFE_TAG,${{ secrets.DOCKER_USERNAME }}/shizuru-backend:$COMMIT_HASH" >> $GITHUB_ENV
           fi
       - name: Build and push Docker image to Docker Hub
         uses: docker/build-push-action@v5
