@@ -59,7 +59,7 @@ async def search_everything(
                 {"album": regex}, 
                 {"artist": regex}
             ]}
-        ).limit(limit)
+        ).skip(paging["skip"]).limit(paging["limit"])
         response.tracks = [DBTrack(**doc) async for doc in cursor]
 
     if type in ["all", "album"]:
@@ -68,7 +68,7 @@ async def search_everything(
                 {"title": regex},
                 {"artist": regex}
             ]}
-        ).limit(limit)
+        ).skip(paging["skip"]).limit(paging["limit"])
         response.albums = [DBAlbum(**doc) async for doc in cursor]
 
     if type in ["all", "artist"]:
