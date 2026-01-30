@@ -46,7 +46,7 @@ class AppleMusic:
                 last_exception = e
                 continue
 
-        raise AppleMusicError(f'Failed to fetch metadata - {last_exception if last_exception else ''}') 
+        raise AppleMusicError(f'Failed to fetch metadata - {last_exception if last_exception else ""}') 
 
     def get_artwork_url(self, artwork_data: Optional[Dict], size: int = 1200) -> Optional[str]:
         if not artwork_data or 'url' not in artwork_data:
