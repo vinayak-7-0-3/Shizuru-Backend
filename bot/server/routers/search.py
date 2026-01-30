@@ -5,6 +5,7 @@ import re
 
 from ...database.connection import mongo
 from ...database.models import DBTrack, DBAlbum, DBArtist
+from ...utils.web import paginate
 
 router = APIRouter()
 
@@ -36,13 +37,17 @@ def create_fuzzy_regex(query: str):
 async def search_everything(
     q: str = Query(..., min_length=1),
     type: str = Query("all", regex="^(all|track|album|artist)$"),
-    limit: int = 20
+    limit: int = 20,
+    page: int = 1
 ):
     regex = create_fuzzy_regex(q)
     response = SearchResponse()
     
     if not regex:
         return response
+
+    paging = paginate(limit, page)
+
 
     # We can run these concurrently, but for simplicity/safety with motor/asyncio loop 
     # and connection pool, sequential await is fine for this scale.
@@ -69,7 +74,7 @@ async def search_everything(
     if type in ["all", "artist"]:
         cursor = mongo.db["artists"].find(
             {"name": regex}
-        ).limit(limit)
+        ).skip(paging["skip"]).limit(paging["limit"])
         response.artists = [DBArtist(**doc) async for doc in cursor]
 
     return response
