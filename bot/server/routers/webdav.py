@@ -2,6 +2,7 @@ import re
 import secrets
 import mimetypes
 import os
+import html
 from email.utils import formatdate
 from urllib.parse import quote, unquote
 
@@ -66,7 +67,7 @@ def generate_propfind_xml(resources: list, base_url: str, is_collection: bool = 
         
         # Display Name
         disp = name if name else unquote(base_url.rstrip('/').split('/')[-1]) or "webdav"
-        xml_lines.append(f'<D:displayname>{disp}</D:displayname>')
+        xml_lines.append(f'<D:displayname>{html.escape(disp)}</D:displayname>')
         
         if is_dir:
             xml_lines.append('<D:resourcetype><D:collection/></D:resourcetype>')
