@@ -10,6 +10,7 @@ from config import Config
 from ...database.connection import mongo
 from ...database.models import DBTrack
 from .songs import stream_song
+from ...logger import LOGGER
 
 router = APIRouter()
 security = HTTPBasic()
@@ -196,7 +197,16 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
             match = FILENAME_REGEX.match(filename)
             if match:
                 file_unique_id = match.group(2)
-                return await stream_song(file_unique_id, request)
+                LOGGER.info(f"WebDAV Streaming: {filename} -> {file_unique_id}")
+                try:
+                    return await stream_song(file_unique_id, request)
+                except HTTPException as e:
+                    LOGGER.error(f"Stream Error: {e.detail}")
+                    raise e
+            else:
+                LOGGER.warning(f"WebDAV Filename mismatch: {filename}")
+        else:
+            LOGGER.warning(f"WebDAV Invalid Path Structure: {clean_path} ->Parts: {parts}")
         
         raise HTTPException(status_code=404, detail="File Not Found")
 
