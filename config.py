@@ -21,6 +21,10 @@ class Config(object):
         ADMINS = set(int(x) for x in getenv("ADMINS").split())
         MUSIC_CHANNELS = set(int(x) for x in getenv("MUSIC_CHANNELS").split())
 
+        ENABLE_WEBDAV = getenv("ENABLE_WEBDAV", "False").lower() == "true"
+        WEBDAV_USERNAME = getenv("WEBDAV_USERNAME", "admin")
+        WEBDAV_PASSWORD = getenv("WEBDAV_PASSWORD", "admin")
+
         PORT = int(getenv('PORT', 8080))
 
         SECRET_KEY = getenv('SECRET_KEY')
