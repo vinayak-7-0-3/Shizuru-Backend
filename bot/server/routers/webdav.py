@@ -212,6 +212,10 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
             raise HTTPException(status_code=404, detail="Not Found")
 
     if method == "GET" or method == "HEAD":
+        # Handle collections
+        if clean_path == "" or clean_path == "All Songs":
+             return Response(content="WebDAV Collection", media_type="text/plain")
+
         parts = clean_path.split('/')
         if len(parts) == 2 and parts[0] == "All Songs":
             filename = parts[1]
