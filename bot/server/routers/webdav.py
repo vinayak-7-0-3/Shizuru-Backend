@@ -1,5 +1,7 @@
 import re
 import secrets
+import mimetypes
+import os
 from email.utils import formatdate
 from urllib.parse import quote, unquote
 
@@ -15,7 +17,8 @@ from ...logger import LOGGER
 router = APIRouter()
 security = HTTPBasic()
 
-FILENAME_REGEX = re.compile(r"(.+) - \[(.+)\]\.mp3$")
+# Relaxed regex: Matches "Anything [ID].ext"
+FILENAME_REGEX = re.compile(r"(.+) \[(.+)\]\.(\w+)$")
 
 def check_auth(credentials: HTTPBasicCredentials = Depends(security)):
     if not Config.ENABLE_WEBDAV:
@@ -149,9 +152,21 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                  cursor = mongo.db["songs"].find({"file_unique_id": {"$ne": None}, "file_size": {"$ne": None}}).limit(limit)
                  async for song_doc in cursor:
                      song = DBTrack(**song_doc)
-                     safe_title = re.sub(r'[\\/*?:"<>|]', "", song.title)
-                     safe_artist = re.sub(r'[\\/*?:"<>|]', "", song.artist or "Unknown")
-                     name = f"{safe_title} - {safe_artist} [{song.file_unique_id}].mp3"
+                     safe_title = re.sub(r'[\\/*?:"<>|]', "", song.title).strip()
+                     safe_artist = re.sub(r'[\\/*?:"<>|]', "", song.artist or "Unknown").strip()
+                     
+                     # Determine extension
+                     ext = ".mp3"
+                     if song.file_name:
+                          _, ext_val = os.path.splitext(song.file_name)
+                          if ext_val:
+                              ext = ext_val
+                     elif song.mime_type:
+                          guess = mimetypes.guess_extension(song.mime_type)
+                          if guess:
+                              ext = guess
+                              
+                     name = f"{safe_title} - {safe_artist} [{song.file_unique_id}]{ext}"
                      
                      resources.append({
                          'name': name,
