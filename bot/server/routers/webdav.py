@@ -1,5 +1,6 @@
 import re
 import secrets
+from email.utils import formatdate
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Request, Response, HTTPException, Depends, status
@@ -49,8 +50,6 @@ def generate_propfind_xml(resources: list, base_url: str, is_collection: bool = 
         name = res['name']
         is_dir = res.get('is_dir', False)
         
-        # href should be absolute or relative to root? Absolute is safer.
-        # If name is empty, it's the requested resource (self)
         if name == "":
             href = base_url
         else:
@@ -62,20 +61,33 @@ def generate_propfind_xml(resources: list, base_url: str, is_collection: bool = 
         xml_lines.append('<D:prop>')
         
         # Display Name
-        disp = name if name else "/" # simplistic
+        disp = name if name else unquote(base_url.rstrip('/').split('/')[-1]) or "webdav"
         xml_lines.append(f'<D:displayname>{disp}</D:displayname>')
         
         if is_dir:
             xml_lines.append('<D:resourcetype><D:collection/></D:resourcetype>')
         else:
             xml_lines.append('<D:resourcetype/>')
-            if 'size' in res:
+            # Content Length
+            if 'size' in res and res['size'] is not None:
                 xml_lines.append(f'<D:getcontentlength>{res["size"]}</D:getcontentlength>')
-            if 'mimetype' in res:
+            # Content Type
+            if 'mimetype' in res and res['mimetype']:
                 xml_lines.append(f'<D:getcontenttype>{res["mimetype"]}</D:getcontenttype>')
         
-        # Last Modified (optional, can add if available)
-                
+        # Dates
+        if 'last_modified' in res and res['last_modified']:
+            # RFC 1123 format for getlastmodified
+            # timestamp in seconds
+            ts = res['last_modified'].timestamp()
+            fmt = formatdate(timeval=ts, localtime=False, usegmt=True)
+            xml_lines.append(f'<D:getlastmodified>{fmt}</D:getlastmodified>')
+            
+        if 'created_at' in res and res['created_at']:
+            # ISO 8601 for creationdate
+            fmt = res['created_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
+            xml_lines.append(f'<D:creationdate>{fmt}</D:creationdate>')
+
         xml_lines.append('</D:prop>')
         xml_lines.append('<D:status>HTTP/1.1 200 OK</D:status>')
         xml_lines.append('</D:propstat>')
@@ -86,19 +98,22 @@ def generate_propfind_xml(resources: list, base_url: str, is_collection: bool = 
 
 @router.api_route("/webdav/{path:path}", methods=["GET", "HEAD", "PROPFIND", "OPTIONS"])
 async def webdav_handler(path: str, request: Request, username: str = Depends(check_auth)):
-    # Normalize path
-    # path comes from {path:path}, so "webdav/foo" -> path="foo"
-    # wait. Route is prefix /webdav, so path is what follows.
-    
     path = unquote(path)
-    path = path.strip('/')
-    method = request.method
+    # Remove trailing slash for consistency in logic, but keep track if needed
+    clean_path = path.rstrip('/')
     
+    # Base URL construction
+    # If request is /webdav, base_url is .../webdav/
+    # If request is /webdav/, base_url is .../webdav/
     base_url = str(request.base_url) + "webdav/"
-    if path:
-        resource_url = base_url + quote(path)
+    
+    # Resource URL is what we are "at"
+    if clean_path:
+        resource_url = base_url + quote(clean_path)
     else:
         resource_url = base_url
+
+    method = request.method
 
     if method == "OPTIONS":
         return Response(headers={
@@ -111,7 +126,7 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
         depth = request.headers.get("Depth", "1")
         
         # Root Listing
-        if path == "":
+        if clean_path == "":
              resources = [
                  {'name': '', 'is_dir': True} # Self
              ]
@@ -119,22 +134,20 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                  # Children
                  resources.append({'name': 'All Songs', 'is_dir': True})
                  
-             xml_content = generate_propfind_xml(resources, base_url)
+             xml_content = generate_propfind_xml(resources, base_url, is_collection=True)
              return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
         
-        elif path == "All Songs":
+        elif clean_path == "All Songs":
              resources = [
                  {'name': '', 'is_dir': True} # Self
              ]
              if depth != '0':
                  # List songs
-                 # Fetch all songs (beware limits)
+                 # Fetch songs that have file_unique_id
                  limit = 500
-                 cursor = mongo.db["songs"].find().limit(limit)
+                 cursor = mongo.db["songs"].find({"file_unique_id": {"$ne": None}, "file_size": {"$ne": None}}).limit(limit)
                  async for song_doc in cursor:
                      song = DBTrack(**song_doc)
-                     # Construct filename: Title - Artist [file_unique_id].mp3
-                     # Only allow safe chars in filename?
                      safe_title = re.sub(r'[\\/*?:"<>|]', "", song.title)
                      safe_artist = re.sub(r'[\\/*?:"<>|]', "", song.artist or "Unknown")
                      name = f"{safe_title} - {safe_artist} [{song.file_unique_id}].mp3"
@@ -143,49 +156,46 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                          'name': name,
                          'is_dir': False,
                          'size': song.file_size,
-                         'mimetype': song.mime_type
+                         'mimetype': song.mime_type,
+                         'created_at': song.created_at,
+                         'last_modified': song.updated_at
                      })
              
-             xml_content = generate_propfind_xml(resources, resource_url, True)
+             xml_content = generate_propfind_xml(resources, resource_url, is_collection=True)
              return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
         
         else:
             # Check if it matches a file in "All Songs"
-            # path would be "All Songs/Title - Artist [id].mp3"
-            parts = path.split('/')
+            # clean_path "All Songs/Title..."
+            parts = clean_path.split('/')
             if len(parts) == 2 and parts[0] == "All Songs":
                 filename = parts[1]
                 match = FILENAME_REGEX.match(filename)
                 if match:
-                    # It's a file
-                    # PROPFIND on a file with Depth 0 or 1 returns the file properties
-                    # We need to fetch details to get size etc?
-                    # Ideally we parse ID and fetch.
                     file_unique_id = match.group(2)
                     song_doc = await mongo.db["songs"].find_one({"file_unique_id": file_unique_id})
                     if song_doc:
                         song = DBTrack(**song_doc)
                         resources = [{
-                             'name': '', # Self relative to the URL
+                             'name': '', # Self
                              'is_dir': False,
                              'size': song.file_size,
-                             'mimetype': song.mime_type
+                             'mimetype': song.mime_type,
+                             'created_at': song.created_at,
+                             'last_modified': song.updated_at
                         }]
-                        # The base url for this resource
-                        xml_content = generate_propfind_xml(resources, resource_url, False)
+                        xml_content = generate_propfind_xml(resources, resource_url, is_collection=False)
                         return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
 
             raise HTTPException(status_code=404, detail="Not Found")
 
     if method == "GET" or method == "HEAD":
-        # Handle "All Songs/Title - Artist [id].mp3"
-        parts = path.split('/')
+        parts = clean_path.split('/')
         if len(parts) == 2 and parts[0] == "All Songs":
             filename = parts[1]
             match = FILENAME_REGEX.match(filename)
             if match:
                 file_unique_id = match.group(2)
-                # Delegate to stream_song
                 return await stream_song(file_unique_id, request)
         
         raise HTTPException(status_code=404, detail="File Not Found")
