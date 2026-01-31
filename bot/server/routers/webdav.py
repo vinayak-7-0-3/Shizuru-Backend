@@ -92,6 +92,10 @@ def generate_propfind_xml(resources: list, base_url: str, is_collection: bool = 
             fmt = res['created_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
             xml_lines.append(f'<D:creationdate>{fmt}</D:creationdate>')
 
+        if 'etag' in res and res['etag']:
+            # ETag must be quoted
+            xml_lines.append(f'<D:getetag>"{res["etag"]}"</D:getetag>')
+
         xml_lines.append('</D:prop>')
         xml_lines.append('<D:status>HTTP/1.1 200 OK</D:status>')
         xml_lines.append('</D:propstat>')
@@ -174,7 +178,8 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                          'size': song.file_size,
                          'mimetype': song.mime_type,
                          'created_at': song.created_at,
-                         'last_modified': song.updated_at
+                         'last_modified': song.updated_at,
+                         'etag': song.file_unique_id
                      })
              
              xml_content = generate_propfind_xml(resources, resource_url, is_collection=True)
@@ -198,7 +203,8 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                              'size': song.file_size,
                              'mimetype': song.mime_type,
                              'created_at': song.created_at,
-                             'last_modified': song.updated_at
+                             'last_modified': song.updated_at,
+                             'etag': song.file_unique_id
                         }]
                         xml_content = generate_propfind_xml(resources, resource_url, is_collection=False)
                         return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
