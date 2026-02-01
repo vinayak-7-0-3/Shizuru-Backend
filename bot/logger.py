@@ -5,6 +5,11 @@ from pathlib import Path
 
 log_file_path = "./bot/bot_logs.log"
 
+class EndpointFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.getMessage().find("/webdav") == -1
+
+
 class Logger:
     def __init__(self):
         self.logger = logging.getLogger(__name__)

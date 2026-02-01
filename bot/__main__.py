@@ -1,9 +1,12 @@
 import asyncio
 
 import uvicorn
+import copy
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.config import LOGGING_CONFIG
+    
 
 from config import Config
 from .tgclient import botmanager
@@ -25,7 +28,20 @@ web_server.include_router(router)
 
 
 async def run_fastapi():
-    config = uvicorn.Config(app=web_server, host="0.0.0.0", port=Config.PORT, log_level="info")
+
+    log_config = copy.deepcopy(LOGGING_CONFIG)
+    log_config["filters"]["webdav_filter"] = {
+        "()": "bot.logger.EndpointFilter",
+    }
+    log_config["loggers"]["uvicorn.access"]["filters"].append("webdav_filter")
+
+    config = uvicorn.Config(
+        app=web_server, 
+        host="0.0.0.0", 
+        port=Config.PORT, 
+        log_level="info", 
+        log_config=log_config
+    )
     server = uvicorn.Server(config)
     await server.serve()
 

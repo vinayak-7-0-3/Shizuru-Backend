@@ -6,6 +6,7 @@ from pyrogram.enums import MessageMediaType
 from ..utils.queue import AsyncQueueProcessor
 from ..metadata.handler import meta_manager
 from ..database import AlbumManager, ArtistManager, TrackManager
+from ..logger import LOGGER
 from config import Config
 
 async def handle_tracks(data: Tuple[Client, Message]):
@@ -35,6 +36,7 @@ async def handle_tracks(data: Tuple[Client, Message]):
             return
 
         await TrackManager.insert_track(metadata)
+        LOGGER.info(f"Track added: '{metadata.title}' by '{metadata.artist}' (ID: {metadata.track_id or metadata.file_unique_id})")
 
         if metadata.artist_id:
             artist_exist = await ArtistManager.check_exists(
@@ -45,12 +47,14 @@ async def handle_tracks(data: Tuple[Client, Message]):
                     metadata.artist_id, metadata.artist
                 )
                 await ArtistManager.insert_artist(artist_data)
+                LOGGER.info(f"Artist added: '{metadata.artist}' (ID: {metadata.artist_id})")
         
         if metadata.album_id:
             album_exist = await AlbumManager.check_album_exists(metadata.album_id)
             if not album_exist:
                 album_data = await meta_manager.get_album(metadata.album_id)
                 await AlbumManager.insert_album(album_data)
+                LOGGER.info(f"Album added: '{metadata.album}' (ID: {metadata.album_id})")
 
 
 processor = AsyncQueueProcessor(handle_tracks)
