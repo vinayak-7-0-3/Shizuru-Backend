@@ -30,9 +30,16 @@ web_server.include_router(router)
 async def run_fastapi():
 
     log_config = copy.deepcopy(LOGGING_CONFIG)
+    if "filters" not in log_config:
+        log_config["filters"] = {}
+
     log_config["filters"]["webdav_filter"] = {
         "()": "bot.logger.EndpointFilter",
     }
+
+    if "filters" not in log_config["loggers"]["uvicorn.access"]:
+        log_config["loggers"]["uvicorn.access"]["filters"] = []
+
     log_config["loggers"]["uvicorn.access"]["filters"].append("webdav_filter")
 
     config = uvicorn.Config(
