@@ -7,6 +7,7 @@ from email.utils import formatdate
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Request, Response, HTTPException, Depends, status
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from config import Config
@@ -41,67 +42,73 @@ def check_auth(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
+def generate_xml_block(res: dict, base_url: str):
+    """Generates a single <D:response> block."""
+    name = res['name']
+    is_dir = res.get('is_dir', False)
+
+    if name == "":
+        href = base_url
+    else:
+        href = base_url + quote(name)
+
+    xml_lines = []
+    xml_lines.append('<D:response>')
+    xml_lines.append(f'<D:href>{href}</D:href>')
+    xml_lines.append('<D:propstat>')
+    xml_lines.append('<D:prop>')
+
+    # Display Name
+    disp = name if name else unquote(base_url.rstrip('/').split('/')[-1]) or "webdav"
+    xml_lines.append(f'<D:displayname>{html.escape(disp)}</D:displayname>')
+
+    if is_dir:
+        xml_lines.append('<D:resourcetype><D:collection/></D:resourcetype>')
+    else:
+        xml_lines.append('<D:resourcetype/>')
+        # Content Length
+        if 'size' in res and res['size'] is not None:
+            xml_lines.append(f'<D:getcontentlength>{res["size"]}</D:getcontentlength>')
+        # Content Type
+        if 'mimetype' in res and res['mimetype']:
+            xml_lines.append(f'<D:getcontenttype>{res["mimetype"]}</D:getcontenttype>')
+
+    # Dates
+    if 'last_modified' in res and res['last_modified']:
+        # RFC 1123 format for getlastmodified
+        ts = res['last_modified'].timestamp()
+        fmt = formatdate(timeval=ts, localtime=False, usegmt=True)
+        xml_lines.append(f'<D:getlastmodified>{fmt}</D:getlastmodified>')
+
+    if 'created_at' in res and res['created_at']:
+        # ISO 8601 for creationdate
+        fmt = res['created_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
+        xml_lines.append(f'<D:creationdate>{fmt}</D:creationdate>')
+
+    if 'etag' in res and res['etag']:
+        # ETag must be quoted
+        xml_lines.append(f'<D:getetag>"{res["etag"]}"</D:getetag>')
+
+    xml_lines.append('</D:prop>')
+    xml_lines.append('<D:status>HTTP/1.1 200 OK</D:status>')
+    xml_lines.append('</D:propstat>')
+    xml_lines.append('</D:response>')
+    
+    return "".join(xml_lines)
+
 def generate_propfind_xml(resources: list, base_url: str, is_collection: bool = True):
+    # Ensure base_url ends with / if collection
+    if is_collection and not base_url.endswith('/'):
+        base_url += '/'
+
     xml_lines = [
         '<?xml version="1.0" encoding="utf-8" ?>',
         '<D:multistatus xmlns:D="DAV:">'
     ]
-    
-    # Ensure base_url ends with / if collection
-    if is_collection and not base_url.endswith('/'):
-        base_url += '/'
-        
+
     for res in resources:
-        name = res['name']
-        is_dir = res.get('is_dir', False)
-        
-        if name == "":
-            href = base_url
-        else:
-            href = base_url + quote(name)
-            
-        xml_lines.append('<D:response>')
-        xml_lines.append(f'<D:href>{href}</D:href>')
-        xml_lines.append('<D:propstat>')
-        xml_lines.append('<D:prop>')
-        
-        # Display Name
-        disp = name if name else unquote(base_url.rstrip('/').split('/')[-1]) or "webdav"
-        xml_lines.append(f'<D:displayname>{html.escape(disp)}</D:displayname>')
-        
-        if is_dir:
-            xml_lines.append('<D:resourcetype><D:collection/></D:resourcetype>')
-        else:
-            xml_lines.append('<D:resourcetype/>')
-            # Content Length
-            if 'size' in res and res['size'] is not None:
-                xml_lines.append(f'<D:getcontentlength>{res["size"]}</D:getcontentlength>')
-            # Content Type
-            if 'mimetype' in res and res['mimetype']:
-                xml_lines.append(f'<D:getcontenttype>{res["mimetype"]}</D:getcontenttype>')
-        
-        # Dates
-        if 'last_modified' in res and res['last_modified']:
-            # RFC 1123 format for getlastmodified
-            # timestamp in seconds
-            ts = res['last_modified'].timestamp()
-            fmt = formatdate(timeval=ts, localtime=False, usegmt=True)
-            xml_lines.append(f'<D:getlastmodified>{fmt}</D:getlastmodified>')
-            
-        if 'created_at' in res and res['created_at']:
-            # ISO 8601 for creationdate
-            fmt = res['created_at'].strftime('%Y-%m-%dT%H:%M:%SZ')
-            xml_lines.append(f'<D:creationdate>{fmt}</D:creationdate>')
+        xml_lines.append(generate_xml_block(res, base_url))
 
-        if 'etag' in res and res['etag']:
-            # ETag must be quoted
-            xml_lines.append(f'<D:getetag>"{res["etag"]}"</D:getetag>')
-
-        xml_lines.append('</D:prop>')
-        xml_lines.append('<D:status>HTTP/1.1 200 OK</D:status>')
-        xml_lines.append('</D:propstat>')
-        xml_lines.append('</D:response>')
-        
     xml_lines.append('</D:multistatus>')
     return "\n".join(xml_lines)
 
@@ -147,16 +154,26 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
              return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
         
         elif clean_path == "All Songs":
-             resources = [
-                 {'name': '', 'is_dir': True} # Self
-             ]
-             if depth != '0':
-                 # List songs
-                 # Fetch songs that have file_unique_id
-                 limit = 500
-                 cursor = mongo.db["songs"].find({"file_unique_id": {"$ne": None}, "file_size": {"$ne": None}}).limit(limit)
+             async def stream_all_songs(base_url_str: str):
+                 yield '<?xml version="1.0" encoding="utf-8" ?>\n'
+                 yield '<D:multistatus xmlns:D="DAV:">\n'
+                 
+                 # Adjust base_url for collection
+                 if not base_url_str.endswith('/'):
+                     base_url_str += '/'
+                     
+                 # Yield Self
+                 self_res = {'name': '', 'is_dir': True}
+                 yield generate_xml_block(self_res, base_url_str)
+                 
+                 # Stream Songs
+                 cursor = mongo.db["songs"].find({"file_size": {"$ne": None}})
                  async for song_doc in cursor:
                      song = DBTrack(**song_doc)
+                     # Ensure we have a unique ID for the filename
+                     if not song.file_unique_id:
+                          continue
+                          
                      safe_title = re.sub(r'[\\/*?:"<>|]', "", song.title).strip()
                      safe_artist = re.sub(r'[\\/*?:"<>|]', "", song.artist or "Unknown").strip()
                      
@@ -173,7 +190,7 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                               
                      name = f"{safe_title} - {safe_artist} [{song.file_unique_id}]{ext}"
                      
-                     resources.append({
+                     res = {
                          'name': name,
                          'is_dir': False,
                          'size': song.file_size,
@@ -181,10 +198,18 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
                          'created_at': song.created_at,
                          'last_modified': song.updated_at,
                          'etag': song.file_unique_id
-                     })
+                     }
+                     yield generate_xml_block(res, base_url_str)
+                     
+                 yield '</D:multistatus>'
+
+             if depth == '0':
+                  # Just self
+                  resources = [{'name': '', 'is_dir': True}]
+                  xml_content = generate_propfind_xml(resources, resource_url, is_collection=True)
+                  return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
              
-             xml_content = generate_propfind_xml(resources, resource_url, is_collection=True)
-             return Response(content=xml_content, media_type="application/xml; charset=utf-8", status_code=207)
+             return StreamingResponse(stream_all_songs(resource_url), media_type="application/xml; charset=utf-8", status_code=207)
         
         else:
             # Check if it matches a file in "All Songs"
@@ -235,4 +260,3 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
             LOGGER.warning(f"WebDAV Invalid Path Structure: {clean_path} ->Parts: {parts}")
         
         raise HTTPException(status_code=404, detail="File Not Found")
-
