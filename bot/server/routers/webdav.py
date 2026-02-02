@@ -249,7 +249,9 @@ async def webdav_handler(path: str, request: Request, username: str = Depends(ch
             if match:
                 file_unique_id = match.group(2)
                 try:
-                    return await stream_song(file_unique_id, request)
+                    # If this is a GET request without a Range header, it's likely a metadata fetch.
+                    is_metadata_fetch = (method == "GET") and (request.headers.get("Range") is None)
+                    return await stream_song(file_unique_id, request, metadata_fetch=is_metadata_fetch)
                 except HTTPException as e:
                     LOGGER.error(f"Stream Error: {e.detail}")
                     raise e
