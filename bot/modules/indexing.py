@@ -18,6 +18,12 @@ async def handle_tracks(data: Tuple[Client, Message]):
         title = audio_data.title
         artist = audio_data.performer
 
+        song_exist = await TrackManager.check_exists(
+            audio_data.file_unique_id
+        )
+        if song_exist:
+            return
+
         metadata = await meta_manager.search(title, artist)
 
         metadata.chat_id = msg.chat.id
@@ -27,13 +33,6 @@ async def handle_tracks(data: Tuple[Client, Message]):
         metadata.file_size = audio_data.file_size
         metadata.file_name = audio_data.file_name
 
-
-        song_exist = await TrackManager.check_exists(
-            metadata.track_id, metadata.file_unique_id
-        )
-
-        if song_exist:
-            return
 
         await TrackManager.insert_track(metadata)
         LOGGER.info(f"Track added: '{metadata.title}' by '{metadata.artist}' (ID: {metadata.track_id or metadata.file_unique_id})")

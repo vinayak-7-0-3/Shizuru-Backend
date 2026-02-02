@@ -4,18 +4,11 @@ from .connection import mongo, COLLECTIONS
 class TrackManager:
 
     @staticmethod
-    async def check_exists(track_id: str, file_id: str):
+    async def check_exists(file_id: str):
         """Searches the Database if Track already exists"""
-        document = None
-        try:
-            assert(track_id)
-            document = await mongo.db[COLLECTIONS["songs"]].find_one(
-                {"track_id": track_id}
-            )
-        except:
-            document = await mongo.db[COLLECTIONS["songs"]].find_one(
-                {"file_unique_id": file_id}
-            )
+        document = await mongo.db[COLLECTIONS["songs"]].find_one(
+            {"file_unique_id": file_id}
+        )
         return document is not None
 
 

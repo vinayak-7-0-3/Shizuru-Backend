@@ -47,12 +47,10 @@ class Logger:
         self.logger.debug(f'{caller_filename}:{caller_lineno} - {message}')
 
     def info(self, message):
-        caller_filename, caller_lineno = self._get_caller_info()
-        self.logger.info(f'{caller_filename}:{caller_lineno} - {message}')
+        self.logger.info(f'{message}')
 
     def warning(self, message):
-        caller_filename, caller_lineno = self._get_caller_info()
-        self.logger.warning(f'{caller_filename}:{caller_lineno} - {message}')
+        self.logger.warning(f'{message}')
 
     def error(self, message, exc_info=False):
         caller_filename, caller_lineno = self._get_caller_info()
