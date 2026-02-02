@@ -43,9 +43,7 @@ async def stream_song(file_unique_id: str, request: Request, metadata_fetch: boo
     file_size = file_id.file_size or db_track.file_size or 10 * 1024 * 1024
 
     if metadata_fetch:
-        # Metadata fetch: Serve first 2MB (or file size if smaller)
-        # enough for ID3 tags
-        chunk_cap = 2 * 1024 * 1024
+        chunk_cap = 512 * 1024 # 512KB
         limit_size = min(file_size, chunk_cap)
         
         start_byte = 0
