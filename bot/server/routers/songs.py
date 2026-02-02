@@ -25,7 +25,7 @@ async def get_song(id: str):
 
 
 @router.get("/stream/{file_unique_id}")
-async def stream_song(file_unique_id: str, request: Request):
+async def stream_song(file_unique_id: str, request: Request, metadata_fetch: bool = False):
     track = await mongo.db["songs"].find_one({"file_unique_id": file_unique_id})
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
@@ -42,37 +42,70 @@ async def stream_song(file_unique_id: str, request: Request):
     file_id = await bot.bytestreamer.get_file_properties(db_track.chat_id, db_track.msg_id)
     file_size = file_id.file_size or db_track.file_size or 10 * 1024 * 1024
 
-    range_header = request.headers.get("range")
-    start_byte, end_byte = parse_range_header(range_header, file_size)
-
-    chunk_size = 512 * 1024
-    offset = start_byte - (start_byte % chunk_size)
-    first_part_cut = start_byte - offset
-    last_part_cut = (end_byte % chunk_size) + 1
-    total_bytes = end_byte - start_byte + 1
-
-    part_count = ((end_byte - offset) // chunk_size) + 1
-
-    stream_gen = bot.bytestreamer.yield_file(
-        file_id=file_id,
-        index=0,
-        offset=offset,
-        first_part_cut=first_part_cut,
-        last_part_cut=last_part_cut,
-        part_count=part_count,
-        chunk_size=chunk_size
-    )
-
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(total_bytes)
-    }
-
-    if range_header:
-        headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/{file_size}"
-        status_code = 206
-    else:
+    if metadata_fetch:
+        chunk_cap = 512 * 1024 # 512KB
+        limit_size = min(file_size, chunk_cap)
+        
+        start_byte = 0
+        end_byte = limit_size - 1
+        
+        chunk_size = 512 * 1024
+        offset = 0 
+        first_part_cut = 0
+        last_part_cut = (end_byte % chunk_size) + 1
+        part_count = ((end_byte - offset) // chunk_size) + 1
+        
+        # We pretend the file is only this big for the response
+        total_bytes = limit_size
+        
+        stream_gen = bot.bytestreamer.yield_file(
+            file_id=file_id,
+            index=0,
+            offset=offset,
+            first_part_cut=first_part_cut,
+            last_part_cut=last_part_cut,
+            part_count=part_count,
+            chunk_size=chunk_size
+        )
+        
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(total_bytes)
+        }
         status_code = 200
+
+    else:
+        range_header = request.headers.get("range")
+        start_byte, end_byte = parse_range_header(range_header, file_size)
+
+        chunk_size = 512 * 1024
+        offset = start_byte - (start_byte % chunk_size)
+        first_part_cut = start_byte - offset
+        last_part_cut = (end_byte % chunk_size) + 1
+        total_bytes = end_byte - start_byte + 1
+
+        part_count = ((end_byte - offset) // chunk_size) + 1
+
+        stream_gen = bot.bytestreamer.yield_file(
+            file_id=file_id,
+            index=0,
+            offset=offset,
+            first_part_cut=first_part_cut,
+            last_part_cut=last_part_cut,
+            part_count=part_count,
+            chunk_size=chunk_size
+        )
+
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(total_bytes)
+        }
+
+        if range_header:
+            headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/{file_size}"
+            status_code = 206
+        else:
+            status_code = 200
 
     return StreamingResponse(
         stream_gen,
