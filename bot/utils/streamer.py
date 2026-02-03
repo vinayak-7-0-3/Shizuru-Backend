@@ -128,8 +128,7 @@ class ByteStreamer:
                         await media_session.send(raw.functions.auth.ImportAuthorization(id=exported_auth.id, bytes=exported_auth.bytes))
                         break
                     except AuthBytesInvalid:
-                        LOGGER.debug(
-                            'Invalid authorization bytes for DC %s!', file_id.dc_id)
+                        LOGGER.debug(f'Invalid authorization bytes for DC {file_id.dc_id}')
                         continue
                 else:
                     await media_session.stop()
