@@ -59,7 +59,6 @@ class ByteStreamer:
     async def yield_file(self, file_id: FileId, index: int, offset: int, first_part_cut: int, last_part_cut: int, part_count: int, chunk_size: int) -> AsyncGenerator[bytes, None]:
         client = self.client
         self.bot.increment_workload()
-        LOGGER.debug(f"Starting to yield file with client {index}.")
         media_session = await self.generate_media_session(client, file_id)
         current_part = 1
         location = await self.get_location(file_id)
@@ -100,7 +99,6 @@ class ByteStreamer:
 
                     current_part += 1
                     offset += chunk_size
-                    LOGGER.debug(f"Yielded part {current_part-1}/{part_count}, offset {offset}")
                 else:
                     LOGGER.error("Unexpected response type from Telegram")
                     break
@@ -108,7 +106,6 @@ class ByteStreamer:
             LOGGER.error(f"Error while streaming file: {e}")
             raise
         finally:
-            LOGGER.debug(f"Finished yielding file with {current_part-1} parts.")
             self.bot.decrement_workload()
 
 
